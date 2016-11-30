@@ -1,0 +1,60 @@
+Description
+===========
+flexDOAS is a Python library for writing retrieval algorithms
+for Differential Optical Absorption Spectroscopy (DOAS).
+
+This is an early development version and design changes are
+possible. If you like to use the code for your project and/or
+want to contribute to the project please contact me.
+
+Contact:    Gerrit Kuhlmann (gerrit.kuhlmann@empa.ch)
+Address:    Empa
+            Überlandstrasse 129
+            8600 Dübendorf
+            Switzerland
+
+
+Requirements
+============
+- python 2.7 (3.x support will be added in future)
+- numpy
+- scipy
+- cython
+- netCDF4
+- xarray
+
+
+Installing
+==========
+To install flexDOAS, download and unzip the code
+from https://github.com/gkuhl/flexDOAS or clone
+the git repository:
+
+$ git clone https://github.com/gkuhl/flexDOAS
+
+change to the flexDOAS-x.y directory, where x.y is the
+flexDOAS version number, and type the following:
+
+$ python setup.py install
+
+
+Copyright
+=========
+Copyright (C) 2016 Gerrit Kuhlmann
+
+This program is free software: you can redistribute it and/or
+modify it under the terms of the GNU General Public License a
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+
+
