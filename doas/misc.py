@@ -18,7 +18,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import division
+
+from __future__ import division, print_function
 
 import warnings
 
@@ -26,7 +27,30 @@ import numpy as np
 import scipy
 import scipy.interpolate
 
-import convx
+from . import convx
+
+
+
+def calculate_n_coefficients(kind, degree, n_subwindows=None, knots=None):
+    """\
+    Calculate the number of coefficients for polynomials/splines.
+    Returns 0 if kind not known.
+    """
+    if kind == 'B-spline':
+        if n_subwindows is None:
+            return knots.size + degree + 1
+        else:
+            return (n_subwindows + 1) + (degree + 1)
+    elif kind == 'C-spline':
+        if n_subwindows is None:
+            return knots.size
+        else:
+            return n_subwindows + 1
+    elif kind in ['cardinal', 'lagrange']:
+        return degree + 1
+    else:
+        return 0
+
 
 
 def slant_column_fmt(x, x_std):
@@ -49,7 +73,11 @@ def create_covariance_matrix(sigma, knots, length):
     """\
     Create covariance matrix for spline.
     """
-    n = knots.size
+    if knots is None:
+        n = 0
+    else:
+        n = knots.size
+
     Sa = np.empty((n,n))
 
     if np.ndim(sigma) == 0:
@@ -106,22 +134,26 @@ def sampling_interval(x):
 
 
 
-def convolve(x, y, cw, fwhm, mode='gauss'):
+def convolve(x, y, cw, sfp, mode='gauss'):
     """\
     Convolve x,y with cw,fwhm for slit function (mode):
     - gauss (Gaussian)
     - erf (Error Function)
+    - asym_gauss (Asymetric Gaussian)
     """
     x = np.asarray(x, dtype='f8')
     y = np.asarray(y, dtype='f8')
     cw = np.asarray(cw, dtype='f8')
-    fwhm = np.asarray(fwhm, dtype='f8')
+    sfp = np.asarray(sfp, dtype='f8')
 
     if np.std(np.diff(x)) / np.mean(np.diff(x)) > 1e-9:
-        print np.std(np.diff(x)), np.mean(np.diff(x))
+        print(np.std(np.diff(x)), np.mean(np.diff(x)))
         raise ValueError('x need to be equidistant!')
 
-    return convx.convolve(x, y, cw, fwhm, mode)
+    if np.ndim(sfp) == 2:
+        return convx.convolve(x, y, mode, cw, sfp[0], sfp[1])
+    else:
+        return convx.convolve(x, y, mode, cw, sfp, sfp)
 
 
 
@@ -135,14 +167,14 @@ def convolve_gaussian(x, y, cw, fwhm, integrate=False, points=10):
     fwhm = np.asarray(fwhm, dtype='f8')
 
     if np.std(np.diff(x)) / np.mean(np.diff(x)) > 1e-9:
-        print np.std(np.diff(x)), np.mean(np.diff(x))
-        print 'x need to be equidistant!'
+        print(np.std(np.diff(x)), np.mean(np.diff(x)))
+        print('x need to be equidistant!')
 
     if integrate:
         ssi = sampling_interval(cw)
 
         z = []
-        for i in xrange(cw.size):
+        for i in range(cw.size):
             wmin = cw[i] - 0.5 * ssi[i]
             wmax = cw[i] + 0.5 * ssi[i]
 

@@ -24,10 +24,11 @@ has not been tested yet and might not work, in particular, for
 non-equidistant grids.
 """
 
+from __future__ import division, print_function
 import numpy as np
 from scipy.special import erf
 
-import misc
+from . import misc
 
 def error_function(x, sigma, ssi, dx=None):
     """\
@@ -83,9 +84,28 @@ def box_gauss(x, mu, sigma, ssi):
     return np.convolve(p,g, mode='same')
 
 
-def convolve(x, y, cw, fwhm, mode='gauss'):
+def asym_gauss(x, mu, sigma, asym):
+    """\
+    Simple asymetric gauss.
+
+    |asym| needs to be smaller than |sigma|
+    """
+    pos = x >= mu
+    neg = ~pos
+
+    a = (x[1] - x[0]) / (np.sqrt(2.0 * np.pi) * sigma)
+
+    s = np.empty_like(x)
+    s[pos] = np.exp( -np.abs( (x[pos] - mu) / (np.sqrt(2) * (sigma + asym)) )**2 )
+    s[neg] = np.exp( -np.abs( (x[neg] - mu) / (np.sqrt(2) * (sigma - asym)) )**2 )
+
+    return a * s
+
+
+def convolve(x, y, cw, spf, mode='gauss'):
     """\
     Convolve y(x) with cw and fwhm (not tested).
+
     """
     tau = np.sqrt(2.0 * np.pi)
     fwhm2sigma = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))
@@ -95,18 +115,21 @@ def convolve(x, y, cw, fwhm, mode='gauss'):
 
     values = np.zeros(cw.size)
 
-    for i in xrange(cw.size):
+    for i in range(cw.size):
         j, k = 0, x.size
 
         if j <= k:
             if mode == 'gauss':
-                g = gauss(x[j:k], cw[i], fwhm[i] * fwhm2sigma)
+                g = gauss(x[j:k], cw[i], spf[i] * fwhm2sigma)
 
             elif mode == 'box_gauss':
-                g = box_gauss(x[j:k], cw[i], fwhm[i] * fwhm2sigma, ssi[i])
+                g = box_gauss(x[j:k], cw[i], spf[i] * fwhm2sigma, ssi[i])
 
             elif mode == 'error_function':
-                g = error_function(x[j:k] - cw[i], fwhm[i] * fwhm2sigma, ssi[i])
+                g = error_function(x[j:k] - cw[i], spf[i] * fwhm2sigma, ssi[i])
+
+            elif mode == 'asym_gauss':
+                g = asym_gauss(x[j:k], cw[i], spf[0,i] * fwhm2sigma, spf[1,i] * fwhm2sigma)
 
             else:
                 raise ValueError

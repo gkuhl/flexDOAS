@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import division, print_function
 import numpy as np
 
 from scipy import dot
@@ -59,7 +60,7 @@ def forward_jacobian(x, vecfunc, b):
     df = np.zeros((f0.size, x.size))
     x = x.copy()
 
-    for j in xrange(x.size):
+    for j in range(x.size):
         df[:,j] = compute_forward_difference(j, x, f0, vecfunc, b, EPS)
 
     return df
@@ -147,7 +148,7 @@ def gauss_newton(x0, y, f,  Se=np.nan, Sa=np.nan, xa=np.nan, fprime=None, b=None
 
     xi = x0.copy()
 
-    for i in xrange(max_iters):
+    for i in range(max_iters):
         Fi = f(xi, b)
 
         if np.any(np.isnan(Fi)):

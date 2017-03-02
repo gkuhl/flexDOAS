@@ -67,6 +67,26 @@ cpdef np.ndarray[DTYPE_t] error_function(np.ndarray[DTYPE_t] x, double sigma, do
     return g
 
 
+cpdef np.ndarray[DTYPE_t] asym_gauss(np.ndarray[DTYPE_t] x, double mu, double sigma, double asym):
+    cdef np.ndarray[np.float64_t] g
+    cdef double a, sigma_plus, sigma_minus
+    cdef double tau = 2.5066282746310002 # sqrt(2pi)
+    cdef unsigned int i
+
+    i = np.argmax(x >= mu)
+
+    a = (x[1] - x[0]) / (tau * sigma)
+
+    sigma_plus = 1.4142135623730951 * (sigma + asym)
+    sigma_minus = 1.4142135623730951 * (sigma - asym)
+
+    g = np.empty(x.size)
+    g[:i] = a * np.exp( -( (x[:i] - mu) / sigma_minus)**2 )
+    g[i:] = a * np.exp( -( (x[i:] - mu) / sigma_plus)**2 )
+
+    return g
+
+
 def gauss(np.ndarray x, double mu, double sigma):
     cdef np.ndarray[np.float64_t] g
     cdef double tau = 2.5066282746310002 # sqrt(2pi)
@@ -80,9 +100,10 @@ def gauss(np.ndarray x, double mu, double sigma):
 cpdef np.ndarray[DTYPE_t] convolve(
         np.ndarray[DTYPE_t] x,
         np.ndarray[DTYPE_t] y,
+        str mode,
         np.ndarray[DTYPE_t] cw,
         np.ndarray[DTYPE_t] fwhm,
-        str mode
+        np.ndarray[DTYPE_t] asym
     ):
     """\
     Convolve y on grid x with isf (instrument slit function).
@@ -90,8 +111,9 @@ cpdef np.ndarray[DTYPE_t] convolve(
     x: equdistant wavelength coords
     y: values
 
-    cw: center wavelengths
+    cw:   center wavelengths
     fwhm: full width at half maximum of Gaussian slit function
+    asym: asym factor (ignore for gauss and erf)
     """
     cdef np.ndarray[np.int_t, ndim=1] imin, imax
     cdef unsigned int i,j,k,l, M=cw.size, N=x.size
@@ -127,6 +149,8 @@ cpdef np.ndarray[DTYPE_t] convolve(
                 g *= a / (fwhm[i] * fwhm2sigma)
             elif mode == 'erf':
                 g = error_function(x[j:k] - cw[i], fwhm[i] * fwhm2sigma, ssi[i])
+            elif mode == 'asym_gauss':
+                g = asym_gauss(x[j:k], cw[i], fwhm[i] * fwhm2sigma, asym[i] * fwhm2sigma)
             else:
                 raise ValueError('Unknown slit function "%s"' % mode)
 

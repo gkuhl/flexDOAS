@@ -18,21 +18,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import division, print_function
 
 import logging
 import os
 import sys
 import time
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    pass
+
 import numpy as np
 import scipy
 import xarray as xr
 
-import cspline
-import io
-import misc
-import solver
+#from . import convolution
+from . import cspline
+from . import io
+from . import misc
+from . import solver
 
 try:
     # the qdoas package is not publicly available
@@ -311,7 +317,7 @@ class CrossSection(Function):
             z  = 0.5 * (levels[1:] + levels[:-1])
 
             data = np.array([misc.interpolate(wavelength, w, tau[i], k=1)
-                for i in xrange(tau.shape[0])
+                for i in range(tau.shape[0])
             ])
 
             if scaling is not None:
@@ -332,10 +338,10 @@ class CrossSection(Function):
             if fwhm is None:
                 data = misc.interpolate(wavelength, w, tau, k=1)
             else:
-                data = misc.convolve_gaussian(w, tau, wavelength, fwhm)
+                data = misc.convolve(w, tau, wavelength, fwhm, mode='gauss')
 
             if scaling is not None:
-                if isinstance(scaling, basestring):
+                if isinstance(scaling, str):
                     if scaling == 'ptp':
                         scaling = 1.0 / np.ptp(data)
                     else:
@@ -416,7 +422,6 @@ class CrossSection(Function):
         return values
 
 
-
 class Spline(Function):
     type_ = "Spline"
 
@@ -445,19 +450,13 @@ class Spline(Function):
             else:
                 self.knots = np.array(knots)
 
-            self.n_coefficients = {
-                'B-spline': self.knots.size + self.degree + 1,
-                'C-spline': self.knots.size
-            }[self.kind]
-
         elif self.kind == 'lagrange':
             self.knots = np.linspace(0, self.size, self.degree + 1)
-            self.n_coefficients = self.degree + 1
 
         else: # polynomial: cardinal
             self.knots = knots
-            self.n_coefficients = self.degree + 1
 
+        self.n_coefficients = misc.calculate_n_coefficients(kind, degree, n_subwindows, self.knots)
         self.mapping = np.arange(self.n_coefficients) + start
 
         if self.kind == 'B-spline':
@@ -525,6 +524,9 @@ class Spline(Function):
         elif self.kind == 'cardinal':
             values = np.polyval(x, self.i)
 
+        elif self.kind == 'zeros':
+            values = 0.0
+
         else:
             raise ValueError('Unknown kind "%s".' % self.kind)
 
@@ -573,6 +575,44 @@ class Ring(Function):
         return ring
 
 
+class Resolution(object):
+    def __init__(self, w, E, cw, h, dh, isf='gauss', start=0, mode='log'):
+        """\
+        Resolution cross section for correcting differences between
+        slit function parameters of reference and spectrum.
+        """
+        self.w = np.squeeze(w)
+        self.E = np.squeeze(E)
+        self.mode = mode
+
+        n = self.E.shape[0] if np.ndim(self.E) == 2 else 1
+        self.mapping = np.arange(start,start+n)
+
+        if self.mapping.size == 1:
+            self.resol = (
+                misc.convolve(self.w, self.E, cw, h, isf) - misc.convolve(self.w, self.E, cw, h + dh, isf)
+            ) / dh
+            if self.mode == 'log':
+                self.resol = self.resol / misc.convolve(self.w, self.E, cw, h, isf)
+        else:
+            self.resol = []
+            for i in range(n):
+                r = (misc.convolve(self.w, self.E[i], cw, h, isf) - misc.convolve(self.w, self.E[i], cw, h + dh, isf)) / dh
+
+                if self.mode[i] == 'log':
+                    r = r / misc.convolve(self.w, self.E[i], cw, h, isf)
+
+                self.resol.append(r)
+
+
+    def __call__(self, x, b):
+        if self.mapping.size == 1:
+            return x[self.mapping] * self.resol
+        else:
+            return np.dot(x[self.mapping], self.resol)
+
+
+
 
 class Undersampling(object):
     def __init__(self, w, E, start=0, mode='log'):
@@ -585,7 +625,7 @@ class Undersampling(object):
 
         self.mode = mode
 
-        n = E.shape[0] if np.ndim(E) == 2 else 1
+        n = self.E.shape[0] if np.ndim(self.E) == 2 else 1
         self.mapping = np.arange(start,start+n)
 
     def __call__(self, x, b):
@@ -597,9 +637,9 @@ class Undersampling(object):
         # spectrum cw is interpolated to refernce cw0
         if self.mapping.size == 1:
 
-            over = misc.convolve_gaussian(self.w, self.E, cw0, fwhm0)
+            over = misc.convolve(self.w, self.E, cw0, fwhm0)
             under = misc.interpolate(
-                cw0, cw, misc.convolve_gaussian(self.w, self.E, cw, fwhm),
+                cw0, cw, misc.convolve(self.w, self.E, cw, fwhm),
                 k=3
             )
             if self.mode == 'log':
@@ -609,10 +649,11 @@ class Undersampling(object):
 
         else:
             usamp = np.zeros_like(cw0)
-            for i in xrange(self.mapping.size):
-                over = misc.convolve_gaussian(self.w, self.E[i], cw0, fwhm0)
+
+            for i in range(self.mapping.size):
+                over = misc.convolve(self.w, self.E[i], cw0, fwhm0)
                 under = misc.interpolate(
-                    cw0, cw, misc.convolve_gaussian(self.w, self.E[i], cw, fwhm),
+                    cw0, cw, misc.convolve(self.w, self.E[i], cw, fwhm),
                     k=3
                 )
                 if self.mode[i] == 'log':
@@ -675,13 +716,13 @@ class Retrieval(object):
 
     def solve_all(self, quiet=False):
         n_main = self.data.main_dim.size
-        print 'Solve for %d observation vectors using "%s" method.' % (n_main, self.solver_method)
+        print('Solve for %d observation vectors using "%s" method.' % (n_main, self.solver_method))
         start = time.time()
-        for p in xrange(n_main):
+        for p in range(n_main):
             self.solve(p, quiet=quiet)
 
         t = (time.time() - start)
-        print 'Finished after %.2f seconds (%.2f seconds per pixel).' % (t, t / n_main)
+        print('Finished after %.2f seconds (%.2f seconds per pixel).' % (t, t / n_main))
 
 
     def solve(self, p, solver_method=None, quiet=False):
@@ -757,7 +798,7 @@ class Retrieval(object):
 
 
         else:
-            print p, info['msg']
+            print(p, info['msg'])
             self.results.set('x', x, p)
             self.results.set('rms', np.nan, p)
 
