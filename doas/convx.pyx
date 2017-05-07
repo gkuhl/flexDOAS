@@ -75,7 +75,7 @@ cpdef np.ndarray[DTYPE_t] asym_gauss(np.ndarray[DTYPE_t] x, double mu, double si
 
     i = np.argmax(x >= mu)
 
-    a = (x[1] - x[0]) / (tau * sigma)
+    a = (x[1] - x[0]) / (tau * sigma) # TODO recheck this
 
     sigma_plus = 1.4142135623730951 * (sigma + asym)
     sigma_minus = 1.4142135623730951 * (sigma - asym)

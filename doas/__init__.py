@@ -236,7 +236,6 @@ class FunctionsList(Function):
         else:
             raise ValueError('"%s" not functions' % name)
 
-
     @property
     def names(self):
         return [f.name for f in self.functions]
@@ -251,8 +250,10 @@ class CrossSection(Function):
     type_ = "CrossSection"
 
     def __init__(self, name, wavelength, values, scaling=1.0, z=np.nan, dz=np.nan, start=0,
-        do_caching=True, spline=None):
+        do_caching=True, spline=None, fit_profile=False):
         """\
+
+        fit_profile: if True fit cross section as profile
         """
         self.name = name
 
@@ -263,13 +264,20 @@ class CrossSection(Function):
         self.scaling = scaling
 
         self.spline = spline
-        if spline is None:
-            self.mapping = np.array([start])
+        self.fit_profile = bool(fit_profile)
+
+        if self.fit_profile:
+            self.mapping = np.arange(start, start + self.dz.size)
         else:
-            self.mapping = np.arange(start, start+spline.n_coefficients)
+            if spline is None:
+                self.mapping = np.array([start])
+            else:
+                self.mapping = np.arange(start, start+spline.n_coefficients)
+
+        self.end = self.mapping[-1]
 
         # use this to cache calculation of tau
-        self.do_caching = do_caching
+        self.do_caching = bool(do_caching)
         self.pointer = None
         self.cached_data = None
 
@@ -296,7 +304,8 @@ class CrossSection(Function):
             attrs = {
                     'start':  self.mapping[0],
                     'name':    self.name,
-                    'do_caching': int(self.do_caching),
+                    'do_caching':  int(self.do_caching),
+                    'fit_profile': int(self.fit_profile),
             }
         )
 
@@ -338,7 +347,18 @@ class CrossSection(Function):
             if fwhm is None:
                 data = misc.interpolate(wavelength, w, tau, k=1)
             else:
-                data = misc.convolve(w, tau, wavelength, fwhm, mode='gauss')
+                try:
+                    data = misc.convolve(w, tau, wavelength, fwhm, mode='gauss')
+                except ValueError:
+                    # TODO: fix convolution with non-equidistant
+                    print('Warning: Interpolate Cross Section')
+                    wnew = np.arange(
+                            wavelength[0]-fwhm[0], wavelength[-1]+fwhm[-1],
+                            np.min(np.diff(w))
+                    )
+                    tau = misc.interpolate(wnew, w, tau)
+                    data = misc.convolve(wnew, tau, wavelength, fwhm, mode='gauss')
+
 
             if scaling is not None:
                 if isinstance(scaling, str):
@@ -349,7 +369,7 @@ class CrossSection(Function):
 
                 data *= scaling
 
-            if highpass is not None:
+            if highpass:
                 x = np.arange(data.size)
                 data -= np.polyval(np.polyfit(x, data, 3), x)
 
@@ -413,6 +433,7 @@ class CrossSection(Function):
                     z = np.concatenate([self.z + 0.5 * self.dz, [self.z[-1] - 0.5 * self.dz[-1]]])
                     amf = misc.geometric_layer_amfs(z, b['sza'], b['vza'], b['zg'], b['zi'])
 
+                # TODO: allow for x profiles
                 data = np.sum(amf[:,np.newaxis] * self.values, axis=0)
                 values = data * x
             else:
@@ -457,7 +478,10 @@ class Spline(Function):
             self.knots = knots
 
         self.n_coefficients = misc.calculate_n_coefficients(kind, degree, n_subwindows, self.knots)
-        self.mapping = np.arange(self.n_coefficients) + start
+
+        self.start = start
+        self.end = start + self.n_coefficients
+        self.mapping = np.arange(self.start, self.end)
 
         if self.kind == 'B-spline':
             self.knots = np.concatenate([
@@ -525,7 +549,7 @@ class Spline(Function):
             values = np.polyval(x, self.i)
 
         elif self.kind == 'zeros':
-            values = 0.0
+            values = np.zeros(self.size)
 
         else:
             raise ValueError('Unknown kind "%s".' % self.kind)
@@ -561,6 +585,11 @@ class Ring(Function):
                 raise ValueError('Ring cross section `ring` not provided.')
         else:
             self.ring = ring
+
+    @classmethod
+    def from_file(cls, filename, start=0):
+        cw, ring = np.loadtxt(filename, unpack=True)
+        return cls(cw=cw, ring=ring, start=start)
 
 
     def __call__(self, x, b):
@@ -681,11 +710,18 @@ class Retrieval(object):
         self.data = data
 
         if results is None:
-            self.results = RetrievalResults.from_data(
-                data.main_dim.size,
-                data.state_dim.size,
-                data.obs_dim.size,
-            )
+            try:
+                self.results = RetrievalResults.from_data(
+                    data.main_dim.size,
+                    data.state_dim.size,
+                    data.obs_dim.size,
+                )
+            except AttributeError:
+                self.results = RetrievalResults.from_data(
+                    data.main_dim.size,
+                    self.forward_model.n_states,
+                    data.obs_dim.size,
+                )
         else:
             self.results = results
 
